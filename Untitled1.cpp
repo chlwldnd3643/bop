@@ -11,7 +11,7 @@ int thermo1DO = 12, thermo1CS = 13, thermo1CLK = 14;
 int thermo2DO = 15, thermo2CS = 16, thermo2CLK = 17;
 
 int adcValues[10];
-float voltages[3];
+float voltage[3];
 float current[3];
 float humidity[2];
 float temp_of_humidity_sensor[2];
@@ -46,7 +46,7 @@ void loop() {
     adcValues[i] = analogRead(A0 + i);
     
   for (int i = 0; i < 3; i++) {
-    voltages[i] = (adcValues[i] * ADC_MAX_VOLTAGE) / ADC_RESOLUTION;
+    voltage[i] = (adcValues[i] * ADC_MAX_VOLTAGE) / ADC_RESOLUTION;
     current[i] = (adcValues[i + 3] * ADC_MAX_VOLTAGE) / ADC_RESOLUTION;
   }
 
