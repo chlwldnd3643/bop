@@ -1,0 +1,145 @@
+#ifndef POTENTIOMETER_H
+#define POTENTIOMETER_H
+// Header file: digipot_control_simplified.h
+#include "DigiPotX9Cxxx.h"
+#include <Arduino.h>
+
+extern DigiPot MyPot;
+
+extern const float V_REF;
+extern const int WIPER_PIN;
+extern float voltage;
+extern bool isRunning;
+extern int direction;
+extern unsigned long previousMillis;
+extern const long interval;
+
+void setup();
+void loop();
+void HandleSerialInput();
+void StartAdjustment(int dir, const char* message);
+void StopAdjustment();
+void AdjustWiper();
+void PrintVoltage();
+void ResetWiperToZero();
+void OutputVoltage();
+
+#endif
+
+// CPP file: digipot_control_simplified.cpp
+
+DigiPot MyPot(9, 8, 10); // Pins: (INC, U/D, CS)
+
+const float V_REF = 5.0;    // Change if using different Vref
+const int WIPER_PIN = A0;   // Analog input pin for reading the wiper voltage
+const int OUTPUT_PIN = A1;  // Analog output pin for writing the voltage
+float voltage = 0;
+bool isRunning = false;     // 상태 플래그: 자동 증가/감소 동작 중인지 여부
+int direction = 0;          // 0: 없음, 1: 증가, -1: 감소
+unsigned long previousMillis = 0;
+const long interval = 200;  // 1초에 5번, 즉 200ms마다 전압을 프린트
+
+//===============================================================================
+//  Initialization
+//===============================================================================
+void setup() {
+  pinMode(WIPER_PIN, INPUT);
+  pinMode(OUTPUT_PIN, OUTPUT);
+  Serial.begin(9600);
+
+  // 와이퍼를 0으로 설정하는 함수 호출
+  ResetWiperToZero();
+
+  Serial.print("Initial Voltage Setting: ");
+  PrintVoltage(); // Print initial value
+}
+
+//===============================================================================
+//  Main Loop
+//===============================================================================
+void loop() {
+  if (Serial.available()) HandleSerialInput(); // Check for user input from Serial
+
+  // 주기적으로 200ms마다 전압 값을 출력하고 와이퍼를 움직임
+  if (isRunning && millis() - previousMillis >= interval) {
+    previousMillis = millis();
+    AdjustWiper();
+    PrintVoltage();
+    OutputVoltage(); // Output the voltage to OUTPUT_PIN (A1)
+  }
+}
+
+//===============================================================================
+//  Handle Serial Input
+//===============================================================================
+void HandleSerialInput() {
+  String input = Serial.readStringUntil('\n'); // Read user input
+  input.trim();  // Remove any leading/trailing spaces
+
+  if (input == "U") {            // 'U' 입력 시 자동 증가 시작
+    StartAdjustment(1, "Increasing Value");
+  } else if (input == "D") {     // 'D' 입력 시 자동 감소 시작
+    StartAdjustment(-1, "Decreasing Value");
+  } else if (input == "STOP") {  // 'STOP' 입력 시 동작 멈춤
+    StopAdjustment();
+  }
+}
+
+//===============================================================================
+//  Start or Stop Adjustment
+//===============================================================================
+void StartAdjustment(int dir, const char* message) {
+  direction = dir;
+  isRunning = true;
+  Serial.println(message);
+}
+
+void StopAdjustment() {
+  isRunning = false;
+  direction = 0;
+  Serial.println("Operation Stopped");
+}
+
+//===============================================================================
+//  Adjust Wiper Position
+//===============================================================================
+void AdjustWiper() {
+  if (direction == 1) {
+    MyPot.increase(1); // 와이퍼 증가
+  } else if (direction == -1) {
+    MyPot.decrease(1); // 와이퍼 감소
+  }
+}
+
+//===============================================================================
+//  Print Voltage Reading
+//===============================================================================
+void PrintVoltage() {
+  int sampleADC = analogRead(WIPER_PIN);      // Take reading on wiper pin
+  float volts = (sampleADC * V_REF) / 1023.0; // Convert to voltage
+  Serial.print("   ADC = ");
+  Serial.print(sampleADC);
+  Serial.print("  Voltage = ");
+  Serial.println(volts, 3);
+}
+
+//===============================================================================
+//  Output Voltage to A1 Pin
+//===============================================================================
+void OutputVoltage() {
+  int sampleADC = analogRead(WIPER_PIN);      // Take reading on wiper pin
+  int outputValue = map(sampleADC, 0, 1023, 0, 255); // Map ADC value to PWM range (0-255)
+  analogWrite(OUTPUT_PIN, outputValue);       // Output the mapped value to OUTPUT_PIN
+}
+
+//===============================================================================
+//  Reset Wiper to the Lowest Position (0 voltage)
+//===============================================================================
+void ResetWiperToZero() {
+  Serial.println("Resetting wiper to 0 (initial voltage = 0)");
+
+  // X9C103S는 99단계가 있으므로, 와이퍼를 가장 낮은 위치로 이동
+  for (int i = 0; i < 99; i++) {
+    MyPot.decrease(1); // 와이퍼를 최소 값으로 설정
+  }
+}
