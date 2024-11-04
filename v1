@@ -1,0 +1,215 @@
+import sys
+import matplotlib.pyplot as plt
+
+sys.path.append('C:/Program Files/FreeCAD 0.21/bin')
+sys.path.append('C:/Program Files/FreeCAD 0.21/lib')
+
+import FreeCAD
+import Part
+import numpy as np
+import random
+
+# File paths for imported FreeCAD XML data
+file1_path = "C:/Users/Pharosmarine/Desktop/test.txt"
+file2_path = "C:/Users/Pharosmarine/Desktop/test2.txt"
+
+# FreeCAD document creation
+doc = FreeCAD.newDocument("SimulatedAnnealingBoundingBox")
+
+
+# Function to load FreeCAD parts from XML
+def load_part_from_xml(file_path, part_name):
+    with open(file_path, 'r') as file:
+        content = file.read()
+    # Extract relevant part details (simplified extraction for demonstration)
+    part = Part.Shape()  # Placeholder: This would be parsed data to create a shape
+    return part
+
+
+# Load parts from files
+part1 = load_part_from_xml(file1_path, "Calix Engine Heater")
+part2 = load_part_from_xml(file2_path, "3-way Solenoid Valve")
+
+# Add parts to the document
+obj1 = doc.addObject("Part::Feature", "Part1")
+obj2 = doc.addObject("Part::Feature", "Part2")
+obj1.Shape = part1
+obj2.Shape = part2
+
+doc.recompute()
+
+
+# Function to compute the bounding box volume of a part
+def compute_individual_bounding_box_volume(obj):
+    bounding_box = obj.Shape.BoundBox
+    return bounding_box.XLength * bounding_box.YLength * bounding_box.ZLength
+
+
+# Function to compute the bounding box volume of two parts
+def compute_combined_bounding_box_volume(obj1, obj2):
+    bounding_box1 = obj1.Shape.BoundBox
+    bounding_box2 = obj2.Shape.BoundBox
+    combined_bounding_box = bounding_box1
+    combined_bounding_box.add(bounding_box2)
+    return combined_bounding_box.XLength * combined_bounding_box.YLength * combined_bounding_box.ZLength
+
+
+# Function to apply translation and rotation to an object
+def apply_transformation(obj, translation, rotation):
+    obj.Placement.Base = FreeCAD.Vector(*translation)
+    if isinstance(rotation, FreeCAD.Rotation):
+        obj.Placement.Rotation = rotation
+    else:
+        obj.Placement.Rotation = FreeCAD.Rotation(*rotation)
+
+
+# Simulated Annealing algorithm with visualization
+def simulated_annealing(obj1, obj2, max_iter=1000, initial_temp=1000, cooling_rate=0.99):
+    # Initialize state
+    best_volume = compute_combined_bounding_box_volume(obj1, obj2)
+    best_translation1 = obj1.Placement.Base
+    best_translation2 = obj2.Placement.Base
+    best_rotation1 = obj1.Placement.Rotation
+    best_rotation2 = obj2.Placement.Rotation
+
+    current_temp = initial_temp
+
+    # Lists to store data for visualization
+    combined_volumes = [best_volume]
+    part1_volumes = [compute_individual_bounding_box_volume(obj1)]
+    part2_volumes = [compute_individual_bounding_box_volume(obj2)]
+    translations1_x = [best_translation1.x]
+    translations1_y = [best_translation1.y]
+    translations1_z = [best_translation1.z]
+    translations2_x = [best_translation2.x]
+    translations2_y = [best_translation2.y]
+    translations2_z = [best_translation2.z]
+    rotations1_x = [best_rotation1.toEuler()[0]]
+    rotations1_y = [best_rotation1.toEuler()[1]]
+    rotations1_z = [best_rotation1.toEuler()[2]]
+    rotations2_x = [best_rotation2.toEuler()[0]]
+    rotations2_y = [best_rotation2.toEuler()[1]]
+    rotations2_z = [best_rotation2.toEuler()[2]]
+    time_steps = list(range(max_iter + 1))
+
+    for i in range(max_iter):
+        # Generate random movement and rotation
+        translation1 = np.array([best_translation1.x, best_translation1.y, best_translation1.z]) + np.random.uniform(-5, 5, 3)
+        translation2 = np.array([best_translation2.x, best_translation2.y, best_translation2.z]) + np.random.uniform(-5, 5, 3)
+        rotation1 = np.random.uniform(-10, 10, 3)
+        rotation2 = np.random.uniform(-10, 10, 3)
+
+        # Apply new transformations
+        apply_transformation(obj1, translation1, rotation1)
+        apply_transformation(obj2, translation2, rotation2)
+
+        # Compute new bounding box volumes
+        new_combined_volume = compute_combined_bounding_box_volume(obj1, obj2)
+        new_part1_volume = compute_individual_bounding_box_volume(obj1)
+        new_part2_volume = compute_individual_bounding_box_volume(obj2)
+
+        # Acceptance probability calculation
+        delta = new_combined_volume - best_volume
+        acceptance_prob = np.exp(-delta / current_temp) if delta > 0 else 1
+
+        if random.random() < acceptance_prob:
+            best_volume = new_combined_volume
+            best_translation1 = FreeCAD.Vector(*translation1)
+            best_translation2 = FreeCAD.Vector(*translation2)
+            best_rotation1 = FreeCAD.Rotation(*rotation1)
+            best_rotation2 = FreeCAD.Rotation(*rotation2)
+
+        # Decrease temperature
+        current_temp *= cooling_rate
+
+        # Store data for visualization
+        combined_volumes.append(best_volume)
+        part1_volumes.append(new_part1_volume)
+        part2_volumes.append(new_part2_volume)
+        translations1_x.append(best_translation1.x)
+        translations1_y.append(best_translation1.y)
+        translations1_z.append(best_translation1.z)
+        translations2_x.append(best_translation2.x)
+        translations2_y.append(best_translation2.y)
+        translations2_z.append(best_translation2.z)
+        rotations1_x.append(best_rotation1.toEuler()[0])
+        rotations1_y.append(best_rotation1.toEuler()[1])
+        rotations1_z.append(best_rotation1.toEuler()[2])
+        rotations2_x.append(best_rotation2.toEuler()[0])
+        rotations2_y.append(best_rotation2.toEuler()[1])
+        rotations2_z.append(best_rotation2.toEuler()[2])
+
+        # Recompute document
+        doc.recompute()
+
+    # Apply the best results
+    apply_transformation(obj1, best_translation1, best_rotation1)
+    apply_transformation(obj2, best_translation2, best_rotation2)
+    doc.recompute()
+
+    # Plot volume convergence
+    plt.figure(figsize=(18, 28))
+    plt.subplot(8, 1, 1)
+    plt.plot(time_steps, combined_volumes, label='Combined Bounding Box Volume', color='b')
+    plt.plot(time_steps, part1_volumes, label='Part1 Bounding Box Volume', color='r')
+    plt.plot(time_steps, part2_volumes, label='Part2 Bounding Box Volume', color='g')
+    plt.xlabel('Iteration')
+    plt.ylabel('Bounding Box Volume')
+    plt.title('Simulated Annealing - Bounding Box Volume Convergence')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Part1 translation convergence
+    plt.subplot(8, 1, 2)
+    plt.plot(time_steps, translations1_x, label='Part1 X Translation', color='r')
+    plt.plot(time_steps, translations1_y, label='Part1 Y Translation', color='g')
+    plt.plot(time_steps, translations1_z, label='Part1 Z Translation', color='b')
+    plt.xlabel('Iteration')
+    plt.ylabel('Translation (units)')
+    plt.title('Part1 Translation Convergence')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Part1 rotation convergence
+    plt.subplot(8, 1, 3)
+    plt.plot(time_steps, rotations1_x, label='Part1 X Rotation', color='r')
+    plt.plot(time_steps, rotations1_y, label='Part1 Y Rotation', color='g')
+    plt.plot(time_steps, rotations1_z, label='Part1 Z Rotation', color='b')
+    plt.xlabel('Iteration')
+    plt.ylabel('Rotation (degrees)')
+    plt.title('Part1 Rotation Convergence')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Part2 translation convergence
+    plt.subplot(8, 1, 4)
+    plt.plot(time_steps, translations2_x, label='Part2 X Translation', color='r')
+    plt.plot(time_steps, translations2_y, label='Part2 Y Translation', color='g')
+    plt.plot(time_steps, translations2_z, label='Part2 Z Translation', color='b')
+    plt.xlabel('Iteration')
+    plt.ylabel('Translation (units)')
+    plt.title('Part2 Translation Convergence')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Part2 rotation convergence
+    plt.subplot(8, 1, 5)
+    plt.plot(time_steps, rotations2_x, label='Part2 X Rotation', color='r')
+    plt.plot(time_steps, rotations2_y, label='Part2 Y Rotation', color='g')
+    plt.plot(time_steps, rotations2_z, label='Part2 Z Rotation', color='b')
+    plt.xlabel('Iteration')
+    plt.ylabel('Rotation (degrees)')
+    plt.title('Part2 Rotation Convergence')
+    plt.grid(True)
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    print(f"Minimum bounding box volume: {best_volume} cubic units")
+    print(f"Optimized Part1 Placement: Translation - {best_translation1}, Rotation - {best_rotation1}")
+    print(f"Optimized Part2 Placement: Translation - {best_translation2}, Rotation - {best_rotation2}")
+
+
+# Run Simulated Annealing
+simulated_annealing(obj1, obj2)
