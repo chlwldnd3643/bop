@@ -1,0 +1,82 @@
+import sys
+sys.path.append('C:/Program Files/FreeCAD 0.21/bin')
+sys.path.append('C:/Program Files/FreeCAD 0.21/lib')
+import FreeCAD
+import Part
+
+# FreeCAD 파일 경로 설정
+file1_path = "C:\\Users\\Pharosmarine\\Desktop\\Calix Engine Heater.zip.FCStd"
+file2_path = "C:\\Users\\Pharosmarine\\Desktop\\2. 3-way solenoid valve.FCStd"
+
+def process_freecad_file(file_path):
+    try:
+        doc = FreeCAD.open(file_path)
+
+        # 모든 객체에 대해 Bounding Box 및 부피 계산
+        max_volume = None
+        max_volume_dimensions = None  # 최대 부피를 가진 객체의 x, y, z 길이 저장
+        max_volume_bounds = None      # 최대 부피를 가진 객체의 bounding box 정보 저장
+
+        for obj in doc.Objects:
+            if hasattr(obj, 'Shape') and obj.Shape:
+                bounding_box = obj.Shape.BoundBox
+                min_point = (bounding_box.XMin, bounding_box.YMin, bounding_box.ZMin)
+                max_point = (bounding_box.XMax, bounding_box.YMax, bounding_box.ZMax)
+
+                # X, Y, Z 좌표 길이 계산
+                x_length = abs(bounding_box.XMax - bounding_box.XMin)
+                y_length = abs(bounding_box.YMax - bounding_box.YMin)
+                z_length = abs(bounding_box.ZMax - bounding_box.ZMin)
+
+                # 부피 계산
+                volume = x_length * y_length * z_length
+
+                # 최대 부피와 해당 길이 및 경계 값 업데이트
+                if max_volume is None or volume > max_volume:
+                    max_volume = volume
+                    max_volume_dimensions = (x_length, y_length, z_length)
+                    max_volume_bounds = {
+                        "xmin": bounding_box.XMin,
+                        "xmax": bounding_box.XMax,
+                        "ymin": bounding_box.YMin,
+                        "ymax": bounding_box.YMax,
+                        "zmin": bounding_box.ZMin,
+                        "zmax": bounding_box.ZMax,
+                    }
+
+        # 최대 부피와 해당 길이 및 경계 값 반환
+        return max_volume, max_volume_dimensions, max_volume_bounds
+
+    except Exception as e:
+        print(f"파일을 여는 중 오류가 발생했습니다: {e}")
+        return None, None, None
+
+# 첫 번째 파일 처리
+print("Processing file 1...")
+max_volume_file1, dimensions_file1, bounds_file1 = process_freecad_file(file1_path)
+
+# 두 번째 파일 처리
+print("Processing file 2...")
+max_volume_file2, dimensions_file2, bounds_file2 = process_freecad_file(file2_path)
+
+# 최종 결과 출력
+print("\n\033[1m\033[4mSummary of Maximum Volumes\033[0m")
+if max_volume_file1 is not None:
+    x_length, y_length, z_length = dimensions_file1
+    print(f"Maximum Volume for file 1 ({file1_path}): {max_volume_file1}")
+    print(f"  X Length: {x_length}, Y Length: {y_length}, Z Length: {z_length}")
+    print(f"  Bounding Box: xmin={bounds_file1['xmin']}, xmax={bounds_file1['xmax']}, "
+          f"ymin={bounds_file1['ymin']}, ymax={bounds_file1['ymax']}, "
+          f"zmin={bounds_file1['zmin']}, zmax={bounds_file1['zmax']}\n")
+else:
+    print(f"Maximum Volume for file 1 ({file1_path}): No valid volume found.")
+
+if max_volume_file2 is not None:
+    x_length, y_length, z_length = dimensions_file2
+    print(f"Maximum Volume for file 2 ({file2_path}): {max_volume_file2}")
+    print(f"  X Length: {x_length}, Y Length: {y_length}, Z Length: {z_length}")
+    print(f"  Bounding Box: xmin={bounds_file2['xmin']}, xmax={bounds_file2['xmax']}, "
+          f"ymin={bounds_file2['ymin']}, ymax={bounds_file2['ymax']}, "
+          f"zmin={bounds_file2['zmin']}, zmax={bounds_file2['zmax']}\n")
+else:
+    print(f"Maximum Volume for file 2 ({file2_path}): No valid volume found.")
