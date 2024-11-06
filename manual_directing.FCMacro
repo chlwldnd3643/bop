@@ -1,0 +1,56 @@
+import json
+import sys
+import math
+
+# FreeCAD 경로 설정
+sys.path.append('C:/Program Files/FreeCAD 0.21/bin')
+sys.path.append('C:/Program Files/FreeCAD 0.21/lib')
+
+import FreeCAD
+import Part
+
+# JSON 파일 읽기
+with open('C:/Users/Pharosmarine/PycharmProjects/VOpt/best_data.json', 'r') as json_file:
+    best_data = json.load(json_file)
+
+# 객체 가져오기
+doc = FreeCAD.ActiveDocument
+if doc is None:
+    raise ValueError("활성화된 FreeCAD 문서가 없습니다. 문서를 열고 다시 시도하세요.")
+
+body = doc.getObject("Body")
+if body is None:
+    raise AttributeError("'Body' 객체를 찾을 수 없습니다. 문서에 'Body' 객체가 있는지 확인하세요.")
+
+body001 = doc.getObject("Body001")
+if body001 is None:
+    raise AttributeError("'Body001' 객체를 찾을 수 없습니다. 문서에 'Body001' 객체가 있는지 확인하세요.")
+
+# JSON 파일에서 위치 및 회전 정보 가져오기
+new_position = best_data["transfer_position1_body"]
+rotation_angles_deg = best_data["transfer_rotation1_body"]
+
+new_position_body001 = best_data["transfer_position2_body"]
+rotation_body001_angles_deg = best_data["transfer_rotation2_body"]
+
+# 위치 적용
+body.Placement.Base = FreeCAD.Vector(*new_position)
+body001.Placement.Base = FreeCAD.Vector(*new_position_body001)
+
+# 회전 적용
+x_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), math.radians(rotation_angles_deg[0]))
+y_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), math.radians(rotation_angles_deg[1]))
+z_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), math.radians(rotation_angles_deg[2]))
+rotation_body = x_rotation_body.multiply(y_rotation_body).multiply(z_rotation_body)
+body.Placement.Rotation = rotation_body
+
+x_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), math.radians(rotation_body001_angles_deg[0]))
+y_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), math.radians(rotation_body001_angles_deg[1]))
+z_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), math.radians(rotation_body001_angles_deg[2]))
+rotation_body001 = x_rotation_body001.multiply(y_rotation_body001).multiply(z_rotation_body001)
+body001.Placement.Rotation = rotation_body001
+
+# 문서 업데이트 및 새로고침
+doc.recompute()
+
+print("FreeCAD에서 JSON 파일의 좌표와 회전 정보를 반영했습니다.")
