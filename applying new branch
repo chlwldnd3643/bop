@@ -1,0 +1,36 @@
+import json
+import math
+
+# 위치 변경
+new_position = [-66.83088164290818, -29.296010014266113, 2.2134720658945852]
+new_position_body001 = [-40.9628789263177, -82.80653365370526, 2.655478847445252]
+
+# 회전 변경 (각도를 라디안으로 변환)
+# Body 회전
+rotation_angles_deg = [-123.85592766564555, -107.1334334219735, -58.51426514159246]
+rotation_body = [
+    rotation_angles_deg[0],
+    rotation_angles_deg[1],
+    rotation_angles_deg[2]
+]
+
+# Body001 회전 (각도를 라디안으로 변환)
+rotation_body001_angles_deg = [-290.33753432020046, -52.09490474258058, 172.51202408125584]
+rotation_body001 = [
+    rotation_body001_angles_deg[0],
+    rotation_body001_angles_deg[1],
+    rotation_body001_angles_deg[2]
+]
+
+# 좌표와 회전 정보를 JSON 파일로 저장
+best_data = {
+    "transfer_position1_body": new_position,
+    "transfer_rotation1_body": rotation_body,
+    "transfer_position2_body": new_position_body001,
+    "transfer_rotation2_body": rotation_body001
+}
+# JSON 파일로 내보내기
+with open('best_data.json', 'w') as json_file:
+    json.dump(best_data, json_file, indent=4)
+
+print("JSON 파일로 좌표와 회전 정보를 저장했습니다.")
