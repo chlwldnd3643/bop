@@ -1,0 +1,166 @@
+import json
+import FreeCAD
+import FreeCADGui
+import Part
+import math
+import os
+from PySide import QtCore
+
+# 객체 가져오기
+doc = FreeCAD.ActiveDocument
+Body = doc.getObject("Body")
+Body001 = doc.getObject("Body001")
+
+# 객체 유효성 검사
+if Body is None or Body001 is None:
+    raise ValueError("Body 또는 Body001 객체를 찾을 수 없습니다.")
+
+# 최근 생성된 와이어 객체를 저장할 리스트
+current_wires = []
+
+# 선택된 객체 간의 교집합을 저장할 리스트
+intersection_objects = []
+
+# 와이어 삭제 함수
+def remove_wires():
+    global current_wires
+    for wire in current_wires:
+        if wire in doc.Objects:  # 객체가 아직 문서에 있는지 확인
+            try:
+                doc.removeObject(wire.Name)
+            except Exception as e:
+                print(f"와이어 삭제 중 오류 발생: {e}")
+    current_wires.clear()  # 리스트 초기화
+
+# 와이어 및 교집합 객체 삭제 함수
+def remove_wires_and_intersections():
+    global current_wires, intersection_objects
+    remove_wires()
+
+    for intersection in intersection_objects:
+        if intersection in doc.Objects:  # 객체가 아직 문서에 있는지 확인
+            try:
+                doc.removeObject(intersection.Name)
+            except Exception as e:
+                print(f"교집합 객체 삭제 중 오류 발생: {e}")
+    intersection_objects.clear()  # 리스트 초기화
+
+# 타이머 콜백 함수 정의
+def update_document():
+    global current_wires, intersection_objects, Body, Body001
+    try:
+        # 객체 유효성 재검사 (객체가 삭제되었는지 확인)
+        Body = doc.getObject("Body")
+        Body001 = doc.getObject("Body001")
+        if Body is None or Body001 is None or not hasattr(Body, 'Placement') or not hasattr(Body001, 'Placement'):
+            raise RuntimeError("Body 또는 Body001 객체가 삭제되었거나 유효하지 않습니다. 다시 로드하세요.")
+
+        # JSON 파일 경로
+        json_file_path = "C:/Users/Pharosmarine/PycharmProjects/VOpt/best_data.json"
+
+        # JSON 파일 존재 여부 확인
+        if not os.path.exists(json_file_path):
+            raise FileNotFoundError("JSON 파일을 찾을 수 없습니다. 파일 경로를 확인하세요.")
+
+        # JSON 파일에서 데이터 읽기
+        with open(json_file_path, "r") as file:
+            content = file.read()
+            if not content.strip():  # 파일이 비어 있거나 공백만 있는 경우 체크
+                raise ValueError("JSON 파일이 비어 있습니다. 데이터가 올바르게 저장되었는지 확인하세요.")
+            data = json.loads(content)
+
+        # 파일에서 위치 및 회전 데이터 추출
+        file_position_body = data.get("transfer_position1_body")
+        file_rotation_body = data.get("transfer_rotation1_body")
+
+        file_position_body001 = data.get("transfer_position2_body")
+        file_rotation_body001 = data.get("transfer_rotation2_body")
+
+        # 데이터 유효성 검사
+        if not all([file_position_body, file_rotation_body, file_position_body001, file_rotation_body001]):
+            raise ValueError("JSON 파일에서 위치 또는 회전 데이터 중 일부를 읽어올 수 없습니다. 데이터 형식을 확인하세요.")
+
+        # 위치 변경
+        if hasattr(Body, 'Placement'):
+            new_position = FreeCAD.Vector(*file_position_body)
+            Body.Placement.Base = new_position
+
+        if hasattr(Body001, 'Placement'):
+            new_position_body001 = FreeCAD.Vector(*file_position_body001)
+            Body001.Placement.Base = new_position_body001
+
+        # 회전 변경 (각도를 라디안으로 변환)
+        if hasattr(Body, 'Placement'):
+            rotation_angles_deg = tuple(file_rotation_body)
+            x_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), math.radians(rotation_angles_deg[0]))
+            y_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), math.radians(rotation_angles_deg[1]))
+            z_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), math.radians(rotation_angles_deg[2]))
+            rotation_body = x_rotation_body.multiply(y_rotation_body).multiply(z_rotation_body)
+            Body.Placement.Rotation = rotation_body
+
+        if hasattr(Body001, 'Placement'):
+            rotation_body001_angles_deg = tuple(file_rotation_body001)
+            x_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), math.radians(rotation_body001_angles_deg[0]))
+            y_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), math.radians(rotation_body001_angles_deg[1]))
+            z_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), math.radians(rotation_body001_angles_deg[2]))
+            rotation_body001 = x_rotation_body001.multiply(y_rotation_body001).multiply(z_rotation_body001)
+            Body001.Placement.Rotation = rotation_body001
+
+        # Body와 Body001의 투명도 설정
+        if hasattr(Body.ViewObject, 'Transparency'):
+            Body.ViewObject.Transparency = 50
+        if hasattr(Body001.ViewObject, 'Transparency'):
+            Body001.ViewObject.Transparency = 50
+
+        # 문서 업데이트 및 새로고침
+        doc.recompute()
+
+        # Body와 Body001의 Bounding Box 결합 및 표시
+        if hasattr(Body, 'Shape') and hasattr(Body001, 'Shape') and not Body.Shape.isNull() and not Body001.Shape.isNull():
+            combined_bb = Part.makeCompound([Body.Shape, Body001.Shape]).BoundBox
+
+            # Bounding box 모서리 생성
+            corners = [
+                FreeCAD.Vector(combined_bb.XMin, combined_bb.YMin, combined_bb.ZMin),
+                FreeCAD.Vector(combined_bb.XMin, combined_bb.YMin, combined_bb.ZMax),
+                FreeCAD.Vector(combined_bb.XMin, combined_bb.YMax, combined_bb.ZMin),
+                FreeCAD.Vector(combined_bb.XMin, combined_bb.YMax, combined_bb.ZMax),
+                FreeCAD.Vector(combined_bb.XMax, combined_bb.YMin, combined_bb.ZMin),
+                FreeCAD.Vector(combined_bb.XMax, combined_bb.YMin, combined_bb.ZMax),
+                FreeCAD.Vector(combined_bb.XMax, combined_bb.YMax, combined_bb.ZMin),
+                FreeCAD.Vector(combined_bb.XMax, combined_bb.YMax, combined_bb.ZMax)
+            ]
+
+            # Bounding box 모서리를 연결하는 와이어 생성 (모든 모서리 포함하도록 수정)
+            edges = [
+                Part.LineSegment(corners[i], corners[j]).toShape()
+                for i, j in [
+                    (0, 1), (0, 2), (0, 4), (1, 3), (1, 5),
+                    (2, 3), (2, 6), (3, 7), (4, 5), (4, 6),
+                    (5, 7), (6, 7)
+                ]
+            ]
+            wire = Part.Wire(edges)
+
+            # 와이어 객체 추가
+            wire_obj = doc.addObject("Part::Feature", "BoundingBoxWire")
+            wire_obj.Shape = wire
+            wire_obj.ViewObject.LineWidth = 2.0
+            wire_obj.ViewObject.LineColor = (1.0, 0.0, 0.0)  # Red color for visibility
+            current_wires.append(wire_obj)
+
+        doc.recompute()
+
+        # 2초 후에 와이어와 교집합 객체 제거하는 타이머 시작
+        QtCore.QTimer.singleShot(2000, remove_wires_and_intersections)
+
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, RuntimeError) as e:
+        pass
+
+    except Exception as e:
+        pass
+
+# 타이머 생성 및 설정
+timer = QtCore.QTimer()
+timer.timeout.connect(update_document)
+timer.start(3000)  # 3000 밀리초 (3초) 간격으로 타이머 실행
