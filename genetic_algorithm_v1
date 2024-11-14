@@ -1,26 +1,25 @@
 import sys
-import json
-import random
-import numpy as np
+sys.path.append('C:/Users/Administrator/AppData/Local/Programs/FreeCAD 0.21/bin')
+sys.path.append('C:/Users/Administrator/AppData/Local/Programs/FreeCAD 0.21/lib')
+import FreeCAD
 
-sys.path.append('C:/Program Files/FreeCAD 0.21/bin')
-sys.path.append('C:/Program Files/FreeCAD 0.21/lib')
+import GA_utils
 
 import FreeCAD
 import Part
 import Mesh
 import MeshPart
-import math
 
 import time
-sys.path.append('C:/Users/Pharosmarine/PycharmProjects/VOpt/writejson.py')
+sys.path.append('C:/Users/Administrator/OneDrive - Pharos Marine/바탕 화면/bop-main/bop-main/writejson.py')
 import writejson
 
 
 start_time = time.time()
 # File paths for FreeCAD parts
-file1_path = "C:/Users/Pharosmarine/Desktop/Calix Engine Heater.FCStd"
-file2_path = "C:/Users/Pharosmarine/Desktop/2. 3-way solenoid valve.FCStd"
+file1_path = "C:/Users/Administrator/OneDrive - Pharos Marine/바탕 화면/1. Calix Engine Heater.FCStd"
+file2_path = "C:/Users/Administrator/OneDrive - Pharos Marine/바탕 화면/2. 3-way solenoid valve.FCStd"
+
 
 
 # Function to load FreeCAD part from FCStd file
@@ -34,6 +33,7 @@ def load_freecad_part(file_path):
         return None
 
 temp = 0.0
+test_num=0
 # Load parts from files
 doc1 = load_freecad_part(file1_path)
 doc2 = load_freecad_part(file2_path)
@@ -46,12 +46,14 @@ if doc1 and doc2:
     for obj in doc1.Objects:
         if hasattr(obj, 'Shape') and obj.Shape.Volume > 0:
             part1 = obj
+            test_num+=1
             break
     for obj in doc2.Objects:
         if hasattr(obj, 'Shape') and obj.Shape.Volume > 0:
             part2 = obj
+            test_num-=1
             break
-
+    print("test_num(0) : ",test_num)
     if part1 and part2:
         obj1 = doc.addObject("Part::Feature", "Part1")
         obj2 = doc.addObject("Part::Feature", "Part2")
@@ -63,26 +65,6 @@ if doc1 and doc2:
         obj2.Placement = part2.Placement
 
         doc.recompute()
-
-        # Close documents to free up memory
-        FreeCAD.closeDocument(doc1.Name)
-        FreeCAD.closeDocument(doc2.Name)
-
-        # Increase mesh resolution for collision detection accuracy
-        def mesh_object(obj, linear_deflection=0.01, angular_deflection=0.1):
-            """
-            Create a finer mesh for the given FreeCAD object to improve collision detection accuracy.
-            Args:
-                obj: FreeCAD object.
-                linear_deflection: Linear deflection for meshing, smaller values increase resolution.
-                angular_deflection: Angular deflection for meshing, smaller values increase resolution.
-            """
-            mesh = MeshPart.meshFromShape(Shape=obj.Shape, LinearDeflection=linear_deflection,
-                                          AngularDeflection=angular_deflection, Relative=False)
-            return mesh
-
-        mesh1 = mesh_object(obj1)
-        mesh2 = mesh_object(obj2)
     else:
         print("Failed to find valid parts in the documents.")
         exit()
@@ -91,222 +73,9 @@ else:
     exit()
 
 
-# Function to apply translation and rotation to an object
-def apply_transformation(obj, translation, rotation):
-    obj.Placement.Base = FreeCAD.Vector(*translation)
-
-    # Apply rotation around X, Y, and Z axes individually
-    rotation_x = FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), rotation[0])  # X-axis rotation
-    rotation_y = FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), rotation[1])  # Y-axis rotation
-    rotation_z = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), rotation[2])  # Z-axis rotation
-
-    # Combine the rotations
-    combined_rotation = rotation_x * rotation_y * rotation_z
-    obj.Placement.Rotation = combined_rotation
-
-
-# Function to check for collision between two parts with tolerance consideration
-def check_collision(obj1, obj2, p1, r1, p2, r2):
-    """
-    Check collision between two parts with higher precision.
-    Args:
-        obj1: First FreeCAD object.
-        obj2: Second FreeCAD object.
-        tolerance: The tolerance value for detecting small collisions, smaller values increase sensitivity.
-    Returns:
-        True if there is a collision, False otherwise.
-    """
-    # Apply position and rotation to obj1
-    p1 = obj1.Placement.Base
-    r1 = [
-        math.radians(obj1.Placement.Rotation.toEuler()[0]),
-        math.radians(obj1.Placement.Rotation.toEuler()[1]),
-        math.radians(obj1.Placement.Rotation.toEuler()[2])
-    ]
-    obj1.Placement.Base = FreeCAD.Vector(p1)
-    rotation1 = FreeCAD.Rotation(
-        FreeCAD.Vector(1, 0, 0), r1[0]
-    ).multiply(
-        FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), r1[1])
-    ).multiply(
-        FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), r1[2])
-    )
-    obj1.Placement.Rotation = rotation1
-
-    # Apply position and rotation to obj2
-    p2 = obj2.Placement.Base
-    r2 = [
-        math.radians(obj2.Placement.Rotation.toEuler()[0]),
-        math.radians(obj2.Placement.Rotation.toEuler()[1]),
-        math.radians(obj2.Placement.Rotation.toEuler()[2])
-    ]
-    obj2.Placement.Base = FreeCAD.Vector(p2)
-    rotation2 = FreeCAD.Rotation(
-        FreeCAD.Vector(1, 0, 0), r2[0]
-    ).multiply(
-        FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), r2[1])
-    ).multiply(
-        FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), r2[2])
-    )
-    obj2.Placement.Rotation = rotation2
-
-    # Perform collision detection
-    shape1 = obj1.Shape
-    shape2 = obj2.Shape
-    return bool(shape1.common(shape2).Volume)
-
-# Genetic Algorithm for optimizing part placement
-def genetic_algorithm(obj1, obj2, population_size=500, generations=200, mutation_rate=0.1):
-    # Initialize population with random translations and rotations
-    population = [
-        {
-            "position1": [random.uniform(-100, 100) for _ in range(3)],
-            "rotation1": [random.uniform(-180, 180) for _ in range(3)],
-            "position2": [random.uniform(-100, 100) for _ in range(3)],
-            "rotation2": [random.uniform(-180, 180) for _ in range(3)]
-        }
-        for _ in range(population_size)
-    ]
-
-    # Evaluate fitness of each individual in the population
-    def evaluate_fitness(individual):
-        apply_transformation(obj1, individual["position1"], individual["rotation1"])
-        apply_transformation(obj2, individual["position2"], individual["rotation2"])
-        doc.recompute()
-        if check_collision(obj1, obj2, doc1, doc2):
-            print(writejson.check_collision_with_tolerance(obj1, obj2, doc1, doc2))
-            return 10e9  # Penalize colliding individuals
-
-        # Calculate volume of bounding box
-        bbox1 = obj1.Shape.BoundBox
-        bbox2 = obj2.Shape.BoundBox
-        global_xmin = min(bbox1.XMin, bbox2.XMin)
-        global_xmax = max(bbox1.XMax, bbox2.XMax)
-        global_ymin = min(bbox1.YMin, bbox2.YMin)
-        global_ymax = max(bbox1.YMax, bbox2.YMax)
-        global_zmin = min(bbox1.ZMin, bbox2.ZMin)
-        global_zmax = max(bbox1.ZMax, bbox2.ZMax)
-        volume = (global_xmax - global_xmin) * (global_ymax - global_ymin) * (global_zmax - global_zmin)
-        return volume
-
-    # Selection function (roulette wheel selection)
-    def select_parents(population, fitness_values):
-        total_fitness = sum(fitness_values)
-        if total_fitness == 0 or any(np.isnan(fitness_values)):
-            probabilities = [1 / len(fitness_values)] * len(fitness_values)
-        else:
-            probabilities = [f / total_fitness for f in fitness_values]
-        probabilities = [0 if np.isnan(p) else p for p in probabilities]
-        probabilities_sum = sum(probabilities)
-        if probabilities_sum == 0:
-            probabilities = [1 / len(probabilities)] * len(probabilities)
-        else:
-            probabilities = [p / probabilities_sum for p in probabilities]
-        selected_indices = np.random.choice(range(population_size), size=2, p=probabilities)
-        return [population[selected_indices[0]], population[selected_indices[1]]]
-
-    # Crossover function to combine two parents
-    def crossover(parent1, parent2):
-        crossover_point = random.randint(0, 2)
-        child1 = {
-            "position1": parent1["position1"][:crossover_point] + parent2["position1"][crossover_point:],
-            "rotation1": parent1["rotation1"][:crossover_point] + parent2["rotation1"][crossover_point:],
-            "position2": parent1["position2"][:crossover_point] + parent2["position2"][crossover_point:],
-            "rotation2": parent1["rotation2"][:crossover_point] + parent2["rotation2"][crossover_point:]
-        }
-        return child1
-
-    # Ensure that mutation occurs for both translation and rotation
-    def mutate(individual, mutation_rate):
-        if random.random() < mutation_rate:
-            individual["position1"] = [p + random.uniform(-15, 15) for p in individual["position1"]]
-        if random.random() < mutation_rate * 2:
-            individual["rotation1"] = [r + random.uniform(-179, 179) for r in individual["rotation1"]]
-        if random.random() < mutation_rate:
-            individual["position2"] = [p + random.uniform(-15, 15) for p in individual["position2"]]
-        if random.random() < mutation_rate * 2:
-            individual["rotation2"] = [r + random.uniform(-179, 179) for r in individual["rotation2"]]
-
-    # Main loop of genetic algorithm
-    best_individual = None
-    best_fitness = 10e9 + 9000
-    current_best_fitness = best_fitness
-    current_best_individual = None
-
-    for generation in range(generations):
-        # Evaluate fitness of current population
-        fitness_values = [evaluate_fitness(individual) for individual in population]
-
-        # Handle NaN fitness values
-        fitness_values = [10e8 if np.isnan(f) else f for f in fitness_values]
-
-        # Find the best individual in the current generation
-        past_best_fitness = current_best_fitness
-        current_best_fitness = min(fitness_values)
-        past_best_individual = current_best_individual
-        current_best_individual = population[fitness_values.index(current_best_fitness)]
-
-        # Perform precision collision detection for the best individual
-        apply_transformation(obj1, current_best_individual["position1"], current_best_individual["rotation1"])
-        apply_transformation(obj2, current_best_individual["position2"], current_best_individual["rotation2"])
-        doc.recompute()
-
-        # Precision collision check
-        if writejson.check_collision_with_tolerance(obj1, obj2):
-            # If collision detected, retain the past best individual and fitness
-            print("GENERATION COLLISION OCCURRED - Best individual failed precision check")
-            current_best_fitness = past_best_fitness
-            current_best_individual = past_best_individual
-        else:
-            # Update global best if current best passes the precision check
-            if current_best_fitness < best_fitness:
-                best_fitness = current_best_fitness
-                best_individual = current_best_individual
-
-                # Save the best individual's data to a JSON file
-                best_data = {
-                    "transfer_position1_body": best_individual["position1"],
-                    "transfer_rotation1_body": best_individual["rotation1"],
-                    "transfer_position2_body": best_individual["position2"],
-                    "transfer_rotation2_body": best_individual["rotation2"]
-                }
-                with open("best_data.json", "w") as file:
-                    json.dump(best_data, file)
-
-        print(
-            f"Generation {generation + 1}: Best Fitness = {best_fitness}, Combined Bounding Box Volume = {current_best_fitness}")
-        if current_best_individual is not None:
-            print("Part1 Pos:", current_best_individual["position1"], "Rev", current_best_individual["rotation1"])
-            print("Part2 Pos:", current_best_individual["position2"], "Rev", current_best_individual["rotation2"])
-        else:
-            print("No valid individual found in this generation.")
-        # Selection and reproduction
-        new_population = []
-        while len(new_population) < population_size:
-            parent1, parent2 = select_parents(population, fitness_values)
-            child = crossover(parent1, parent2)
-            mutate(child, mutation_rate)
-            new_population.append(child)
-
-        # Replace old population with new population
-        population = new_population[:population_size]
-
-    # Apply the best found transformation
-    if best_individual:
-        apply_transformation(obj1, best_individual["position1"], best_individual["rotation1"])
-        apply_transformation(obj2, best_individual["position2"], best_individual["rotation2"])
-        doc.recompute()
-        print("Best solution applied.")
-
-    # Print final result
-    print("Final Optimized Values:")
-    print(f"Optimized Part1 Position: {obj1.Placement.Base}, Rotation Degrees: {obj1.Placement.Rotation.toEuler()}")
-    print(f"Optimized Part2 Position: {obj2.Placement.Base}, Rotation Degrees: {obj2.Placement.Rotation.toEuler()}")
-    print(f"Optimized Combined Bounding Box Volume: {best_fitness}")
-
-
 # Run Genetic Algorithm
-genetic_algorithm(obj1, obj2)
+GA_utils.genetic_algorithm(obj1, obj2, 1000, 60, 0.05, doc) #population, generation, mutation rate
 
 end_time = time.time()
 print(f"\uC2E4\uD589 \uC2DC\uAC04: {end_time - start_time:.4f} \uCD08")
+
