@@ -1,56 +1,99 @@
 import json
-import sys
-import math
-
-# FreeCAD 경로 설정
-sys.path.append('C:/Program Files/FreeCAD 0.21/bin')
-sys.path.append('C:/Program Files/FreeCAD 0.21/lib')
-
 import FreeCAD
+import FreeCADGui
 import Part
-
-# JSON 파일 읽기
-with open('C:/Users/Pharosmarine/PycharmProjects/VOpt/best_data.json', 'r') as json_file:
-    best_data = json.load(json_file)
+import math
+import os
+from PySide import QtCore
 
 # 객체 가져오기
 doc = FreeCAD.ActiveDocument
-if doc is None:
-    raise ValueError("활성화된 FreeCAD 문서가 없습니다. 문서를 열고 다시 시도하세요.")
+Body = doc.getObject("Body")
+Body001 = doc.getObject("Body001")
 
-body = doc.getObject("Body")
-if body is None:
-    raise AttributeError("'Body' 객체를 찾을 수 없습니다. 문서에 'Body' 객체가 있는지 확인하세요.")
+# 객체 유효성 검사
+if Body is None or Body001 is None:
+    raise ValueError("Body 또는 Body001 객체를 찾을 수 없습니다.")
 
-body001 = doc.getObject("Body001")
-if body001 is None:
-    raise AttributeError("'Body001' 객체를 찾을 수 없습니다. 문서에 'Body001' 객체가 있는지 확인하세요.")
+# 최근 생성된 와이어 객체를 저장할 리스트
+current_wires = []
 
-# JSON 파일에서 위치 및 회전 정보 가져오기
-new_position = best_data["transfer_position1_body"]
-rotation_angles_deg = best_data["transfer_rotation1_body"]
+# 선택된 객체 간의 교집합을 저장할 리스트
+intersection_objects = []
 
-new_position_body001 = best_data["transfer_position2_body"]
-rotation_body001_angles_deg = best_data["transfer_rotation2_body"]
+# 와이어 삭제 함수
+def remove_wires():
+    global current_wires
+    for wire in current_wires:
+        if wire in doc.Objects:  # 객체가 아직 문서에 있는지 확인
+            try:
+                doc.removeObject(wire.Name)
+            except Exception as e:
+                print(f"와이어 삭제 중 오류 발생: {e}")
+    current_wires.clear()  # 리스트 초기화
 
-# 위치 적용
-body.Placement.Base = FreeCAD.Vector(*new_position)
-body001.Placement.Base = FreeCAD.Vector(*new_position_body001)
+# 와이어 및 교집합 객체 삭제 함수
+def remove_wires_and_intersections():
+    global current_wires, intersection_objects
+    remove_wires()
 
-# 회전 적용
-x_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), math.radians(rotation_angles_deg[0]))
-y_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), math.radians(rotation_angles_deg[1]))
-z_rotation_body = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), math.radians(rotation_angles_deg[2]))
-rotation_body = x_rotation_body.multiply(y_rotation_body).multiply(z_rotation_body)
-body.Placement.Rotation = rotation_body
+    for intersection in intersection_objects:
+        if intersection in doc.Objects:  # 객체가 아직 문서에 있는지 확인
+            try:
+                doc.removeObject(intersection.Name)
+            except Exception as e:
+                print(f"교집합 객체 삭제 중 오류 발생: {e}")
+    intersection_objects.clear()  # 리스트 초기화
 
-x_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), math.radians(rotation_body001_angles_deg[0]))
-y_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), math.radians(rotation_body001_angles_deg[1]))
-z_rotation_body001 = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), math.radians(rotation_body001_angles_deg[2]))
-rotation_body001 = x_rotation_body001.multiply(y_rotation_body001).multiply(z_rotation_body001)
-body001.Placement.Rotation = rotation_body001
+# 타이머 콜백 함수 정의
+def update_document():
+    global current_wires, intersection_objects, Body, Body001
+    try:
+        # 객체 유효성 재검사 (객체가 삭제되었는지 확인)
+        Body = doc.getObject("Body")
+        Body001 = doc.getObject("Body001")
+        if Body is None or Body001 is None or not hasattr(Body, 'Placement') or not hasattr(Body001, 'Placement'):
+            raise RuntimeError("Body 또는 Body001 객체가 삭제되었거나 유효하지 않습니다. 다시 로드하세요.")
 
-# 문서 업데이트 및 새로고침
-doc.recompute()
+        # Body와 Body001의 투명도 설정
+        if hasattr(Body.ViewObject, 'Transparency'):
+            Body.ViewObject.Transparency = 50
+        if hasattr(Body001.ViewObject, 'Transparency'):
+            Body001.ViewObject.Transparency = 50
 
-print("FreeCAD에서 JSON 파일의 좌표와 회전 정보를 반영했습니다.")
+        # 문서 업데이트 및 새로고침
+        doc.recompute()
+
+        # Body와 Body001의 교집합 계산 및 표시
+        if hasattr(Body, 'Shape') and hasattr(Body001, 'Shape') and not Body.Shape.isNull() and not Body001.Shape.isNull():
+            common = Body.Shape.common(Body001.Shape)
+            if common.Volume > 0.0:
+                FreeCAD.Console.PrintMessage('-Intersection- Body with Body001\n')
+                FreeCAD.Console.PrintMessage('Common volume: ' + str(common.Volume) + '\n\n')
+
+                intersection_object = doc.addObject('Part::Feature', 'Intersection')
+                intersection_object.Shape = common
+                intersection_object.ViewObject.ShapeColor = (1.0, 0.0, 0.0)  # Red color for visibility
+                intersection_object.ViewObject.Transparency = 0  # Full opacity for better visibility
+                intersection_object.ViewObject.DisplayMode = "Shaded"
+                intersection_objects.append(intersection_object)
+
+                if hasattr(Body.ViewObject, 'Transparency'):
+                    Body.ViewObject.Transparency = 80
+                if hasattr(Body001.ViewObject, 'Transparency'):
+                    Body001.ViewObject.Transparency = 80
+
+        doc.recompute()
+
+        # 2초 후에 와이어와 교집합 객체 제거하는 타이머 시작
+        QtCore.QTimer.singleShot(2000, remove_wires_and_intersections)
+
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError, RuntimeError) as e:
+        pass
+
+    except Exception as e:
+        pass
+# 타이머 생성 및 설정
+timer = QtCore.QTimer()
+timer.timeout.connect(update_document)
+timer.start(3000)  # 3000 밀리초 (3초) 간격으로 타이머 실행
